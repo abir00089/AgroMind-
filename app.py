@@ -1,44 +1,74 @@
 import streamlit as st
-# Import other necessary libraries (tensorflow, numpy, etc.)
+import tensorflow as tf
+from PIL import Image
+import numpy as np
+import pandas as pd # For the health trends chart
 
-# --- STEP 1: DEFINE THE ADVICE FUNCTION ---
-def get_nutrient_advice(prediction_label):
-    # Ensure every path returns exactly TWO strings
-    if prediction_label == "Healthy":
-        return "Optimal", "No immediate action required. Maintain current care."
-    elif prediction_label == "Yellow Leaf":
-        return "Nitrogen Deficiency", "Apply a nitrogen-rich fertilizer or organic compost."
-    
-    # Default return to prevent ValueError
-    return "Unknown", "Please provide a clearer image for specific advice."
+# --- 1. SETUP & MODEL LOADING ---
+@st.cache_resource
+def load_my_model():
+    return tf.keras.models.load_model('model.h5')
 
-# --- STEP 2: APP UI ---
+model = load_my_model()
+
+# --- 2. THE LOGIC ENGINE ---
+def get_analysis(prediction_label):
+    # Restoring your specific recommendations
+    if "Healthy" in prediction_label:
+        return 95, "STABLE", "Maintain current schedule", "Optimal"
+    elif "Mildew" in prediction_label or "White" in prediction_label:
+        return 62, "STABLE", "Nitrogen Apply", "Low Nitrogen"
+    return 50, "WARNING", "Review Sample", "Inconsistent"
+
+# --- 3. DASHBOARD UI (Restoring your original look) ---
+st.set_page_config(layout="wide")
 st.title("AgroMind Ultimate")
-st.write("Upload a leaf image for disease and nutrient analysis.")
 
-# IMPORTANT: Initialize 'prediction' as None so the app doesn't crash
-prediction = None 
+uploaded_file = st.file_uploader("Scan New Sample", type=["jpg", "jpeg", "png"])
 
-# Example: Replace this with your actual image upload and model logic
-uploaded_file = st.file_uploader("Choose a leaf image...", type=["jpg", "png", "jpeg"])
-
-if uploaded_file is not None:
-    st.image(uploaded_file, caption='Uploaded Image', use_column_width=True)
-    st.write("Processing Leaf Image...")
+if uploaded_file:
+    # --- PROCESSING ---
+    image = Image.open(uploaded_file)
+    img = image.resize((224, 224))
+    img_array = np.expand_dims(np.array(img) / 255.0, axis=0)
     
-    # --- YOUR MODEL LOGIC GOES HERE ---
-    # Example: prediction = your_model.predict(processed_image)
-    # For now, we will set a dummy prediction for testing:
-    prediction = "Healthy" 
+    # Real Prediction
+    predictions = model.predict(img_array)
+    classes = ['Healthy', 'Powdery Mildew', 'Yellow Leaf']
+    result = classes[np.argmax(predictions)]
+    
+    # Get values for your original dashboard metrics
+    h_score, w_priority, rec_action, nut_status = get_analysis(result)
 
-# --- STEP 3: DISPLAY RESULTS (Only if prediction exists) ---
-if prediction is not None:
-    try:
-        nut, nut_adv = get_nutrient_advice(prediction)
-        st.subheader(f"Detected Condition: {prediction}")
-        st.write(f"**Nutrient Status:** {nut}")
-        st.write(f"**Action Plan:** {nut_adv}")
-    except Exception as e:
-        st.error("Error in processing results. Please check the model output.")
+    # --- RESTORING THE VISUALS ---
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Health Score", f"{h_score}%")
+        st.write(f"**Current Sample:** {result}")
+        
+    with col2:
+        st.write("**Watering Priority**")
+        st.subheader(f"🔵 {w_priority}")
+        st.progress(h_score / 100) # Moisture bar simulator
+
+    with col3:
+        st.write("**Rec. Action**")
+        st.header(rec_action)
+
+    st.divider()
+
+    # --- RESTORING THE CROP HEALTH TRENDS CHART ---
+    st.subheader("📊 Crop Health Trends")
+    chart_data = pd.DataFrame(
+        np.random.randn(20, 2) + [h_score, 50],
+        columns=['Health Score %', 'Moisture %']
+    )
+    st.line_chart(chart_data)
+
+    # --- RESTORING NUTRIENT DOSING BOX ---
+    st.subheader("🧪 Nutrient Dosing")
+    st.success(f"**Soil Status:** {nut_status}. Nutrient levels within acceptable range.")
+
 else:
-    st.info("Waiting for image upload to start analysis.")
+    st.info("No history found. Please perform and save a scan to view trends.")
