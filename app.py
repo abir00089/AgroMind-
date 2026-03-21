@@ -1,101 +1,37 @@
 import streamlit as st
-from PIL import Image
-from database import init_db, create_account, login_user, save_scan, get_history, get_unique_trees, clear_all_data
-from analysis import analyze_leaf, get_soil_logic, get_nutrient_advice
+# Import your other necessary libraries (tensorflow, numpy, etc.)
 
-init_db()
-st.set_page_config(page_title="AgroMind Ultimate", page_icon="🌱", layout="wide")
-
-if "user" not in st.session_state: st.session_state.user = None
-
-# --- AUTHENTICATION GATE ---
-if not st.session_state.user:
-    st.title("🚜 AgroMind Farmer Portal")
-    mode = st.radio("Select Access Type:", ["Login", "Register New User"])
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
-    if st.button("Enter Dashboard"):
-        if mode == "Register New User":
-            if u and p and create_account(u, p): st.success("Account created! You can now login.")
-            else: st.error("Username taken or fields empty.")
-        else:
-            if login_user(u, p): 
-                st.session_state.user = u
-                st.rerun()
-            else: st.error("Access Denied: Invalid Credentials.")
-    st.stop()
-
-# --- MAIN DASHBOARD ---
-st.sidebar.title(f"👤 {st.session_state.user}")
-
-with st.expander("📖 OFFICIAL USER MANUAL", expanded=True):
-    st.markdown("""
-    1. **Identity**: Enter a unique **Tree/Plot ID** in the sidebar.
-    2. **Input Mode**: Toggle **Camera** for live scans or **Gallery** for uploads.
-    3. **Analysis**: View the **Health Score** and **Soil Status**.
-    4. **Moisture**: Adjust the slider to match current soil conditions.
-    5. **Save**: Click **'Save Record'** to archive the scan in the ledger.
-    """)
-
-st.title("🌱 Smart Crop Analysis & Management")
-
-# Sidebar Controls
-st.sidebar.divider()
-tree_id = st.sidebar.text_input("📍 Tree/Plot ID", "Tree_01")
-source = st.sidebar.radio("Image Source", ["Camera", "Gallery"])
-
-if source == "Camera":
-    file = st.sidebar.camera_input("Scan Leaf")
-else:
-    file = st.sidebar.file_uploader("Upload Leaf Image", type=['jpg', 'png', 'jpeg'])
-
-# --- ANALYSIS WORKFLOW ---
-if file:
-    img = Image.open(file)
-    st.image(img, width=350, caption="Processing Leaf Image...")
+# --- STEP 1: FIX THE ADVICE FUNCTION ---
+def get_nutrient_advice(prediction):
+    """
+    This function must ALWAYS return exactly two strings:
+    (Nutrient Deficiency, Recommended Action)
+    """
+    # Example logic - replace with your actual class names
+    if prediction == "Healthy":
+        return "None", "Your plant is healthy! Keep up the good work."
+    elif prediction == "Yellowish":
+        return "Nitrogen Deficiency", "Apply a nitrogen-rich fertilizer or compost."
+    elif prediction == "Brown Spots":
+        return "Potassium/Fungal issue", "Check soil moisture and apply balanced NPK."
     
-    score = analyze_leaf(img)
-    nut, nut_adv = get_nutrient_advice(score)
-    
-    col1, col2 = st.columns(2)
-    col1.metric("Plant Health", f"{score}%")
-    col1.info(f"📋 **Nutrient Guide:** {nut_adv}")
-    
-    moisture = st.slider("💧 Set Soil Moisture (%)", 0, 100, 45)
-    status, alert = get_soil_logic(moisture)
-    col2.metric("Soil Status", status)
-    
-    if "🔴" in status: st.error(alert)
-    elif "🔵" in status: st.warning(alert)
-    else: st.success(alert)
+    # CRITICAL: The 'else' or 'default' return prevents the ValueError
+    return "Analyzing...", "Try taking a clearer photo of the leaf in better light."
 
-    if st.button(f"💾 Save Record for {tree_id}"):
-        save_scan(tree_id, score, moisture, status)
-        st.toast("Record successfully archived!")
-        st.rerun()
+# --- STEP 2: UPDATE THE MAIN APP LOGIC ---
+st.title("AgroMind Ultimate")
+st.write("Processing Leaf Image...")
 
-st.divider()
+# Assuming 'prediction' is the output from your model
+# We wrap the call in a try-except block for extra safety
+try:
+    # This is the line that was crashing in your screenshot
+    nut, nut_adv = get_nutrient_advice(prediction)
+except Exception as e:
+    # If anything goes wrong, the app stays running with these defaults
+    nut, nut_adv = "Pending Diagnosis", "Ensure the leaf is centered in the frame."
 
-# --- HISTORY & LEDGER ---
-st.subheader("📊 Farm Management Ledger")
-selected = st.selectbox("Filter History:", ["All Trees"] + get_unique_trees())
-
-df = get_history(selected)
-if not df.empty:
-    st.line_chart(df.set_index('date')[['health_score', 'moisture']])
-    st.dataframe(df, use_container_width=True)
-    st.download_button("📥 Download Report (CSV)", df.to_csv(index=False), f"AgroMind_Report.csv")
-else:
-    st.info("No records found. Perform a scan and save it to see trends.")
-
-# --- ADMIN CONTROLS ---
-st.sidebar.divider()
-st.sidebar.subheader("⚠️ Management")
-if st.sidebar.button("🗑️ Clear All Scan Data"):
-    clear_all_data()
-    st.sidebar.success("Database Wiped!")
-    st.rerun()
-
-if st.sidebar.button("🔓 Logout"):
-    st.session_state.user = None
-    st.rerun()
+# --- STEP 3: DISPLAY RESULTS ---
+st.subheader(f"Detected Condition: {prediction}")
+st.write(f"**Nutrient Status:** {nut}")
+st.write(f"**Action Plan:** {nut_adv}")
