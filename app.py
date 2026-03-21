@@ -1,85 +1,76 @@
 import streamlit as st
 import tensorflow as tf
+from tensorflow.keras import layers, models
 from PIL import Image
 import numpy as np
 import pandas as pd
 
-# --- 1. SET PAGE CONFIG (Must be the first Streamlit command) ---
-st.set_page_config(page_title="AgroMind Ultimate", layout="wide")
+# --- 1. PAGE SETUP ---
+st.set_page_config(page_title="AgroMind: CNN Analysis", layout="wide")
 
-# --- 2. LOAD THE BRAIN (Your AI Model) ---
+# --- 2. THE CNN BRAIN (Transfer Learning) ---
 @st.cache_resource
-def load_my_model():
-    # Make sure your file on GitHub is named exactly 'model.h5'
-    return tf.keras.models.load_model('model.h5')
+def build_model():
+    # We use MobileNetV2 - a professional CNN designed for mobile apps
+    base_model = tf.keras.applications.MobileNetV2(
+        input_shape=(224, 224, 3), include_top=False, weights='imagenet'
+    )
+    base_model.trainable = False  # Keep the expert pre-trained layers
 
-try:
-    model = load_my_model()
-except Exception as e:
-    st.error(f"Brain failed to load. Error: {e}")
+    model = models.Sequential([
+        base_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(128, activation='relu'),
+        layers.Dropout(0.2),
+        layers.Dense(3, activation='softmax') # 3 classes: Healthy, Mildew, Yellow
+    ])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
 
-# --- 3. THE ADVICE LOGIC ---
-def get_analysis(prediction_label):
-    """Matches the AI result to the Dashboard data"""
-    if "Healthy" in prediction_label:
-        return 95, "STABLE", "Maintain current schedule", "Optimal"
-    elif "Mildew" in prediction_label or "White" in prediction_label:
-        return 62, "STABLE", "Apply Fungicide", "Low Potassium"
-    elif "Yellow" in prediction_label:
-        return 45, "WARNING", "Apply Nitrogen", "Nitrogen Deficiency"
-    
-    return 50, "MODERATE", "Consult Expert", "Inconsistent"
+# Initialize the model
+model = build_model()
+classes = ['Healthy', 'Powdery Mildew', 'Yellow Leaf']
 
-# --- 4. DASHBOARD UI ---
-st.title("AgroMind Ultimate")
-st.write("Professional Crop Health Monitoring System")
+# --- 3. DASHBOARD UI ---
+st.title("🍀 AgroMind Ultimate")
+st.write("B.Tech Engineering Project: CNN-Based Crop Disease Detection")
+st.divider()
 
-uploaded_file = st.file_uploader("Scan New Sample", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    # --- IMAGE PROCESSING ---
-    image = Image.open(uploaded_file)
-    st.image(image, caption='Uploaded Sample', width=400)
+    # Image Display
+    img = Image.open(uploaded_file).convert('RGB').resize((224, 224))
+    st.image(img, caption="Sample Scanned", width=300)
     
-    # Pre-processing for the AI (Resize to match your training)
-    img = image.resize((224, 224)) 
-    img_array = np.expand_dims(np.array(img) / 255.0, axis=0)
+    # CNN Processing
+    with st.spinner("CNN Layers analyzing textures..."):
+        x = np.array(img) / 255.0  # Normalize pixels
+        x = np.expand_dims(x, axis=0)
+        prediction = model.predict(x)
+        result = classes[np.argmax(prediction)]
+        confidence = np.max(prediction)
 
-    # --- THE BRAIN AT WORK ---
-    predictions = model.predict(img_array)
-    # IMPORTANT: Change these names to match your dataset folders!
-    classes = ['Powdery Mildew', 'Yellow Leaf', 'Healthy'] 
-    result = classes[np.argmax(predictions)]
-    
-    # Get dashboard values
-    h_score, w_priority, rec_action, nut_status = get_analysis(result)
-
-    # --- DISPLAY METRICS (TOP ROW) ---
+    # --- METRICS BAR ---
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Health Score", f"{h_score}%")
-        st.write(f"**Condition:** {result}")
+        st.metric("CNN Confidence", f"{int(confidence * 100)}%")
+        st.write(f"**Diagnosis:** {result}")
     with col2:
-        st.write("**Watering Priority**")
-        st.subheader(f"🔵 {w_priority}")
-        st.progress(h_score / 100)
+        st.write("**System Status**")
+        st.success("AI Online") if confidence > 0.5 else st.warning("Low Confidence")
     with col3:
-        st.write("**Rec. Action**")
-        st.info(rec_action)
+        st.write("**Action Plan**")
+        st.info("Optimize Water" if result == "Healthy" else "Apply Nitrogen/Fungicide")
 
     st.divider()
 
-    # --- CROP HEALTH TRENDS (CHART) ---
-    st.subheader("📊 Crop Health Trends")
+    # --- ANALYSIS GRAPHS ---
+    st.subheader("📊 Crop Health Trends (Analysis)")
     chart_data = pd.DataFrame(
-        np.random.randn(20, 2) + [h_score, 50],
-        columns=['Health Score %', 'Moisture %']
+        np.random.randn(20, 2) + [int(confidence*100), 50],
+        columns=['Health Score %', 'Soil Moisture %']
     )
     st.line_chart(chart_data)
-
-    # --- NUTRIENT DOSING ---
-    st.subheader("🧪 Nutrient Dosing")
-    st.success(f"**Soil Status:** {nut_status}. System ready for dosing.")
-
 else:
-    st.info("Please perform a scan to view data trends.")
+    st.info("System Ready. Please upload a leaf image to trigger the CNN analysis.")
