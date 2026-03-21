@@ -3,4 +3,3 @@ streamlit
 Pillow
 numpy
 pandas
-
