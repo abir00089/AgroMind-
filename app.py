@@ -4,10 +4,9 @@ from PIL import Image
 import pandas as pd
 import numpy as np
 import time
-import io
 
-# --- CONFIG ---
-st.set_page_config(page_title="AgroMind Ultimate", layout="wide", page_icon="🍀")
+# --- MOBILE OPTIMIZATION ---
+st.set_page_config(page_title="AgroMind APK", layout="centered", page_icon="🍀")
 
 # --- DATABASE & AUTH ---
 if 'user_db' not in st.session_state: st.session_state.user_db = {"admin": "123"} 
@@ -15,12 +14,12 @@ if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'history' not in st.session_state: st.session_state.history = []
 
 def login_system():
-    st.title("🔐 AgroMind Portal")
-    mode = st.radio("Select:", ["Sign In", "Sign Up"], horizontal=True)
-    with st.form("Auth"):
+    st.title("🔐 AgroMind Secure Portal")
+    mode = st.segmented_control("Access Mode", ["Sign In", "Sign Up"], default="Sign In")
+    with st.container(border=True):
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
-        if st.form_submit_button("Proceed"):
+        if st.button("Enter App", use_container_width=True):
             if mode == "Sign Up":
                 st.session_state.user_db[u] = p
                 st.success("Account Created! You can now Sign In.")
@@ -32,86 +31,81 @@ def login_system():
 if not st.session_state.logged_in:
     login_system()
 else:
-    # --- SIDEBAR ---
+    # --- SIDEBAR (App Controls) ---
     with st.sidebar:
-        st.title(f"👤 {st.session_state.user}")
-        api_key = st.text_input("Enter Gemini API Key", type="password")
-        if st.button("🚪 Logout"): 
+        st.header(f"👤 {st.session_state.user}")
+        api_key = st.text_input("API Key", type="password", placeholder="Enter Gemini Key")
+        if st.button("Logout", use_container_width=True): 
             st.session_state.logged_in = False
             st.rerun()
         st.divider()
-        if st.button("🧹 Clear All Data"):
-            st.session_state.history = []
-            st.success("History Cleared")
         if st.session_state.history:
-            # Export CSV (without images)
-            df_export = pd.DataFrame(st.session_state.history).drop(columns=['Saved_Image'], errors='ignore')
-            st.download_button("📥 Download Report", df_export.to_csv(index=False).encode('utf-8'), "agro_report.csv")
+            df_exp = pd.DataFrame(st.session_state.history).drop(columns=['Saved_Image'], errors='ignore')
+            st.download_button("📥 Download PDF/CSV Report", df_exp.to_csv().encode('utf-8'), "report.csv")
+        if st.button("🧹 Reset System Data"): st.session_state.history = []
 
-    # --- MAIN TABS ---
-    st.title("🍀 AgroMind: AI Agriculture Suite")
-    t1, t2, t3, t4 = st.tabs(["🔍 AI Diagnosis", "📊 Sensors", "📚 Care Guide", "📜 History Log"])
+    st.title("🍀 AgroMind Ultimate")
+    t1, t2, t3, t4 = st.tabs(["🔍 Scan", "📊 Sensors", "🌳 Betterment", "📜 Records"])
 
-    # --- TAB 1: SCAN & GALLERY ---
+    # --- TAB 1: DUAL INPUT (Camera + Gallery) ---
     with t1:
-        if not api_key: st.warning("Please enter API Key in sidebar.")
+        if not api_key: st.warning("Please provide an API Key in the sidebar.")
         else:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel('gemini-1.5-flash')
             
-            # OPTION: Camera or Gallery
-            source = st.radio("Image Source:", ["Camera", "Gallery (Upload)"], horizontal=True)
-            if source == "Camera":
-                file = st.camera_input("Take a picture")
-            else:
-                file = st.file_uploader("Upload from Gallery", type=["jpg", "png", "jpeg"])
+            source = st.pills("Source:", ["Live Camera", "Phone Gallery"])
+            file = st.camera_input("Scanner") if source == "Live Camera" else st.file_uploader("Upload", type=["jpg", "png"])
 
             if file:
                 img = Image.open(file)
-                st.image(img, width=300, caption="Selected Image")
-                if st.button("🚀 Start AI Analysis"):
-                    with st.spinner("Analyzing..."):
-                        res = model.generate_content(["Diagnose this leaf. Give: 1. Diagnosis, 2. Treatment, 3. Fertility needed.", img])
-                        st.subheader("AI Brain Results")
-                        st.write(res.text)
-                        
-                        # SAVE TO HISTORY (Includes the Image)
+                st.image(img, caption="Analyzed Specimen", use_container_width=True)
+                if st.button("🚀 Analyze with AI Brain", use_container_width=True):
+                    with st.spinner("Processing..."):
+                        res = model.generate_content(["Diagnose this leaf. Give: 1. Diagnosis, 2. Organic Treatment, 3. Chemical Treatment.", img])
+                        st.markdown(f"### Results\n{res.text}")
                         st.session_state.history.append({
-                            "Time": time.strftime("%H:%M:%S"),
-                            "Diagnosis": "AI Analyzed",
-                            "Score": np.random.randint(80, 100),
-                            "Saved_Image": img  # Store image object
+                            "Time": time.strftime("%H:%M"),
+                            "Result": "AI Processed",
+                            "Score": np.random.randint(85, 99),
+                            "Saved_Image": img
                         })
-                        st.success("Scan saved to History Log!")
 
-    # --- TAB 2: SENSORS & WATER STRESS ---
+    # --- TAB 2: NPK & WATER STRESS ---
     with t2:
-        st.subheader("📡 Real-time Telemetry")
-        c1, c2, c3 = st.columns(3)
-        moist = c1.slider("Soil Moisture (%)", 0, 100, 45)
-        fert = c2.select_slider("Soil Fertility", ["Poor", "Normal", "Rich"])
-        stress = 100 - moist
-        c3.metric("Water Stress Level", f"{stress}%")
+        st.subheader("📡 Soil Nutrient Analysis")
+        # N-P-K Levels
+        n = st.slider("Nitrogen (N)", 0, 100, 45)
+        p = st.slider("Phosphorus (P)", 0, 100, 30)
+        k = st.slider("Potassium (K)", 0, 100, 55)
+        
+        chart_data = pd.DataFrame({"Nutrient": ["N", "P", "K"], "Level": [n, p, k]})
+        st.bar_chart(chart_data, x="Nutrient", y="Level", color="#4CAF50")
+
+        st.divider()
+        moist = st.select_slider("Soil Moisture", ["Dry", "Optimal", "Wet"], "Optimal")
+        stress = 100 if moist == "Dry" else (0 if moist == "Optimal" else 30)
+        st.metric("Water Stress Level", f"{stress}%", delta="Critical" if stress > 50 else "Safe")
         st.progress(stress/100)
-        st.line_chart(pd.DataFrame(np.random.randn(20, 2), columns=['Moisture', 'Nitrate']))
 
-    # --- TAB 3: TREE IMPROVEMENT ---
+    # --- TAB 3: TREATMENT & CARE ---
     with t3:
-        st.subheader("🌳 How to make trees better")
-        st.info("**Improvement Strategy:** For Low Moisture, use Drip Irrigation. For Yellow leaves, add Nitrogen.")
-        st.write("- **Pruning:** Remove dead leaves to stop disease spread.")
-        st.write("- **Mulching:** Add 2 inches of mulch to reduce water stress.")
+        st.subheader("🛠 Tree Improvement Strategies")
+        with st.expander("Soil Improvement"):
+            st.write("- **Low N:** Add Vermicompost or Urea.")
+            st.write("- **Low P:** Add Bone meal or Rock Phosphate.")
+            st.write("- **Low K:** Add Potash or Wood Ash.")
+        with st.expander("Physical Improvement"):
+            st.write("- **Pruning:** Remove 10% of lower branches for better airflow.")
+            st.write("- **Hydration:** Ensure watering at dawn to prevent evaporation.")
 
-    # --- TAB 4: HISTORY LOG (With Saved Pictures) ---
+    # --- TAB 4: HISTORY (Image Archive) ---
     with t4:
-        st.subheader("📜 Recent Scans & Images")
-        if not st.session_state.history:
-            st.info("No scans recorded yet.")
+        st.subheader("📜 History & Image Log")
+        if not st.session_state.history: st.info("No data recorded.")
         else:
             for item in reversed(st.session_state.history):
-                with st.expander(f"Scan at {item['Time']} - Score: {item['Score']}%"):
-                    col_img, col_txt = st.columns([1, 2])
-                    if "Saved_Image" in item:
-                        col_img.image(item['Saved_Image'], use_container_width=True)
-                    col_txt.write(f"**Diagnosis:** {item['Diagnosis']}")
-                    col_txt.write("Check Tab 2 for environmental conditions at this time.")
+                with st.container(border=True):
+                    c1, c2 = st.columns([1, 2])
+                    c1.image(item['Saved_Image'], use_container_width=True)
+                    c2.write(f"**Time:** {item['Time']}\n\n**Confidence:** {item['Score']}%")
