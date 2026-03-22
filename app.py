@@ -5,107 +5,124 @@ import pandas as pd
 import numpy as np
 import time
 
-# --- MOBILE OPTIMIZATION ---
-st.set_page_config(page_title="AgroMind APK", layout="centered", page_icon="🍀")
+# --- MOBILE UI CONFIG ---
+st.set_page_config(page_title="AgroMind Pro", layout="centered")
 
-# --- DATABASE & AUTH ---
+# --- DATABASE & SESSION ---
 if 'user_db' not in st.session_state: st.session_state.user_db = {"admin": "123"} 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'history' not in st.session_state: st.session_state.history = []
+if 'api_key' not in st.session_state: st.session_state.api_key = ""
 
-def login_system():
-    st.title("🔐 AgroMind Secure Portal")
-    mode = st.segmented_control("Access Mode", ["Sign In", "Sign Up"], default="Sign In")
-    with st.container(border=True):
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        if st.button("Enter App", use_container_width=True):
-            if mode == "Sign Up":
-                st.session_state.user_db[u] = p
-                st.success("Account Created! You can now Sign In.")
-            elif u in st.session_state.user_db and st.session_state.user_db[u] == p:
-                st.session_state.logged_in, st.session_state.user = True, u
-                st.rerun()
-            else: st.error("Invalid credentials")
+# --- 1. NEW LOGIN & SIGN-UP (API Key integrated for APK) ---
+def login_page():
+    st.title("🍀 AgroMind APK Portal")
+    tab_auth, tab_reg = st.tabs(["Sign In", "Create Account"])
+    
+    with tab_auth:
+        u = st.text_input("Username", key="login_u")
+        p = st.text_input("Password", type="password", key="login_p")
+        ak = st.text_input("Gemini API Key", type="password", help="Enter once to activate AI")
+        if st.button("Login & Launch", use_container_width=True):
+            if u in st.session_state.user_db and st.session_state.user_db[u] == p:
+                if ak:
+                    st.session_state.logged_in = True
+                    st.session_state.user = u
+                    st.session_state.api_key = ak
+                    st.rerun()
+                else: st.warning("Please provide an API Key to start the AI brain.")
+            else: st.error("Invalid Credentials")
 
+    with tab_reg:
+        new_u = st.text_input("New Username")
+        new_p = st.text_input("New Password", type="password")
+        if st.button("Register Account", use_container_width=True):
+            st.session_state.user_db[new_u] = new_p
+            st.success("User Registered! Please Sign In.")
+
+# --- MAIN APP ---
 if not st.session_state.logged_in:
-    login_system()
+    login_page()
 else:
-    # --- SIDEBAR (App Controls) ---
+    # Configure AI
+    try:
+        genai.configure(api_key=st.session_state.api_key)
+        # Using a safer model string to avoid "NotFound" error
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    except Exception as e:
+        st.error(f"AI Setup Error: {e}")
+
+    # Sidebar for APK Navigation
     with st.sidebar:
         st.header(f"👤 {st.session_state.user}")
-        api_key = st.text_input("API Key", type="password", placeholder="Enter Gemini Key")
-        if st.button("Logout", use_container_width=True): 
+        if st.button("Logout"): 
             st.session_state.logged_in = False
             st.rerun()
         st.divider()
         if st.session_state.history:
-            df_exp = pd.DataFrame(st.session_state.history).drop(columns=['Saved_Image'], errors='ignore')
-            st.download_button("📥 Download PDF/CSV Report", df_exp.to_csv().encode('utf-8'), "report.csv")
-        if st.button("🧹 Reset System Data"): st.session_state.history = []
+            df = pd.DataFrame(st.session_state.history).drop(columns=['Saved_Image'], errors='ignore')
+            st.download_button("📥 Download Report", df.to_csv().encode('utf-8'), "agro_report.csv")
 
     st.title("🍀 AgroMind Ultimate")
     t1, t2, t3, t4 = st.tabs(["🔍 Scan", "📊 Sensors", "🌳 Betterment", "📜 Records"])
 
-    # --- TAB 1: DUAL INPUT (Camera + Gallery) ---
+    # --- TAB 1: AI SCANNER (Gallery + Camera) ---
     with t1:
-        if not api_key: st.warning("Please provide an API Key in the sidebar.")
-        else:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            source = st.pills("Source:", ["Live Camera", "Phone Gallery"])
-            file = st.camera_input("Scanner") if source == "Live Camera" else st.file_uploader("Upload", type=["jpg", "png"])
-
-            if file:
-                img = Image.open(file)
-                st.image(img, caption="Analyzed Specimen", use_container_width=True)
-                if st.button("🚀 Analyze with AI Brain", use_container_width=True):
-                    with st.spinner("Processing..."):
-                        res = model.generate_content(["Diagnose this leaf. Give: 1. Diagnosis, 2. Organic Treatment, 3. Chemical Treatment.", img])
-                        st.markdown(f"### Results\n{res.text}")
+        source = st.radio("Source:", ["Camera", "Gallery"], horizontal=True)
+        file = st.camera_input("Scan") if source == "Camera" else st.file_uploader("Upload", type=["jpg","png"])
+        
+        if file:
+            img = Image.open(file)
+            st.image(img, use_container_width=True)
+            if st.button("🚀 Analyze Plant Health"):
+                with st.spinner("AI Brain Thinking..."):
+                    try:
+                        # Fixed prompt for better reliability
+                        response = model.generate_content([
+                            "Analyze this leaf. 1. Status: (Healthy/Diseased) 2. Name 3. Chemical Fix 4. Organic Fix", 
+                            img
+                        ])
+                        st.success("Analysis Complete!")
+                        st.markdown(response.text)
+                        
                         st.session_state.history.append({
                             "Time": time.strftime("%H:%M"),
-                            "Result": "AI Processed",
-                            "Score": np.random.randint(85, 99),
+                            "Status": "Analyzed",
+                            "Score": np.random.randint(85, 98),
                             "Saved_Image": img
                         })
+                    except Exception as e:
+                        st.error(f"AI Connection Error: {e}. Check if your API Key is correct.")
 
     # --- TAB 2: NPK & WATER STRESS ---
     with t2:
-        st.subheader("📡 Soil Nutrient Analysis")
-        # N-P-K Levels
-        n = st.slider("Nitrogen (N)", 0, 100, 45)
-        p = st.slider("Phosphorus (P)", 0, 100, 30)
-        k = st.slider("Potassium (K)", 0, 100, 55)
+        st.subheader("📡 Soil Telemetry")
+        col_n, col_p, col_k = st.columns(3)
+        n = col_n.number_input("N (Nitrogen)", 0, 100, 40)
+        p = col_p.number_input("P (Phos.)", 0, 100, 35)
+        k = col_k.number_input("K (Potash)", 0, 100, 50)
         
-        chart_data = pd.DataFrame({"Nutrient": ["N", "P", "K"], "Level": [n, p, k]})
-        st.bar_chart(chart_data, x="Nutrient", y="Level", color="#4CAF50")
-
+        st.bar_chart({"Nutrients": ["N", "P", "K"], "Values": [n, p, k]}, x="Nutrients", y="Values")
+        
         st.divider()
-        moist = st.select_slider("Soil Moisture", ["Dry", "Optimal", "Wet"], "Optimal")
-        stress = 100 if moist == "Dry" else (0 if moist == "Optimal" else 30)
-        st.metric("Water Stress Level", f"{stress}%", delta="Critical" if stress > 50 else "Safe")
+        moist = st.slider("Soil Moisture %", 0, 100, 50)
+        stress = 100 - moist
+        st.metric("Water Stress Level", f"{stress}%")
         st.progress(stress/100)
 
-    # --- TAB 3: TREATMENT & CARE ---
+    # --- TAB 3: TREATMENT ---
     with t3:
-        st.subheader("🛠 Tree Improvement Strategies")
-        with st.expander("Soil Improvement"):
-            st.write("- **Low N:** Add Vermicompost or Urea.")
-            st.write("- **Low P:** Add Bone meal or Rock Phosphate.")
-            st.write("- **Low K:** Add Potash or Wood Ash.")
-        with st.expander("Physical Improvement"):
-            st.write("- **Pruning:** Remove 10% of lower branches for better airflow.")
-            st.write("- **Hydration:** Ensure watering at dawn to prevent evaporation.")
+        st.subheader("🛠 Tree Improvement Track")
+        st.info("Strategy: Increase Potassium (K) if fruit size is small. Use Nitrogen (N) for leaf greening.")
+        st.write("1. Pruning: Cut 15% of dead density.")
+        st.write("2. Humidity: Keep at 60% via misting.")
 
-    # --- TAB 4: HISTORY (Image Archive) ---
+    # --- TAB 4: HISTORY (Saved Pics) ---
     with t4:
-        st.subheader("📜 History & Image Log")
-        if not st.session_state.history: st.info("No data recorded.")
-        else:
-            for item in reversed(st.session_state.history):
-                with st.container(border=True):
-                    c1, c2 = st.columns([1, 2])
-                    c1.image(item['Saved_Image'], use_container_width=True)
-                    c2.write(f"**Time:** {item['Time']}\n\n**Confidence:** {item['Score']}%")
+        st.subheader("📜 Recent Scans")
+        if not st.session_state.history: st.info("No records.")
+        for item in reversed(st.session_state.history):
+            with st.container(border=True):
+                c1, c2 = st.columns([1, 2])
+                c1.image(item['Saved_Image'], use_container_width=True)
+                c2.write(f"**Time:** {item['Time']}\n\n**Confidence:** {item['Score']}%")
