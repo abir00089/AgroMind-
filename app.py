@@ -1,241 +1,244 @@
 import streamlit as st
-import cv2
-import numpy as np
-import pandas as pd
 from PIL import Image
+import pandas as pd
+import numpy as np
 import datetime
 
-st.set_page_config(page_title="AgroMind AI", layout="wide")
+# -----------------------------
+# Leaf Health Analysis
+# -----------------------------
+def calculate_health(image, dryness_level, pests_level, texture_score=50):
+    img_array = np.array(image)
+    avg_color = img_array.mean()
+    color_health = np.clip((avg_color-100)/155*100, 0, 100)
 
-# ---------------- UI STYLE ----------------
-st.markdown("""
-<style>
-body {
-    background-color: #f5f7fb;
-}
-.block-container {
-    padding-top: 1rem;
-}
-h1, h2, h3 {
-    color: #1b4332;
-}
-.stMetric {
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
-}
-</style>
-""", unsafe_allow_html=True)
+    dryness_health = max(0, 100 - dryness_level)
+    pests_health = max(0, 100 - pests_level)
+    texture_health = max(0, texture_score)
 
-# ---------------- STATE ----------------
-if "started" not in st.session_state:
-    st.session_state.started = False
-if "history" not in st.session_state:
-    st.session_state.history = []
+    health = (color_health*0.4 + dryness_health*0.25 + pests_health*0.25 + texture_health*0.1)
+    damage = 100 - health
+    confidence = (color_health + dryness_health + (100-pests_level) + texture_health)/4
 
-# ---------------- FRONT PAGE ----------------
-if not st.session_state.started:
-    st.title("🌱 AgroMind AI")
+    return round(health,2), round(damage,2), round(confidence,2)
+
+def generate_heatmap(image, damage_percent):
+    overlay_intensity = int(damage_percent*2.55)
+    overlay = Image.new('RGBA', image.size, (255,0,0,overlay_intensity))
+    heatmap = Image.alpha_composite(image.convert('RGBA'), overlay)
+    return heatmap
+
+def treatment_recommendation(health, damage):
+    soil_moisture = max(0, int(50 - (health/2)))
+    water_stress = max(0, 50 - soil_moisture)
+    treatment = {
+        'Watering (ml/day)': max(100, water_stress*20),
+        'Nitrogen Fertilizer (g/week)': 10 if damage>20 else 5,
+        'Potassium Fertilizer (g/week)': 5 if damage>30 else 2,
+        'Pesticide (ml/week)': 5 if damage>30 else 0,
+        'Fungicide (ml/week)': 5 if damage>25 else 0
+    }
+    return treatment
+
+# -----------------------------
+# App Tabs
+# -----------------------------
+tabs = st.tabs(["Leaf Analysis", "Farming Knowledge"])
+
+# -----------------------------
+# Leaf Analysis Tab
+# -----------------------------
+with tabs[0]:
+    st.title("🌱 AgroMind: Leaf Health & Treatment System")
+
+    if 'start_analysis' not in st.session_state:
+        st.session_state['start_analysis'] = False
+    if 'history' not in st.session_state:
+        st.session_state['history'] = []
 
     st.markdown("""
-### Smart Crop Intelligence System
+    ### Instructions
+    1. Click **Start Analysis**.
+    2. Capture/upload leaf images.
+    3. Input dryness, pest, and optionally texture score.
+    4. View per-leaf heatmap, health metrics, and dynamic treatment suggestions.
+    5. Add to history, track leaves, view batch totals.
+    6. Download CSV summary or reset.
+    """)
 
-**What this app does:**
-- Detects plant damage using AI
-- Identifies pests, diseases, nutrient issues
-- Predicts future risk
-- Suggests treatment & watering
-- Tracks plant health over time
+    if st.button("Start Analysis"):
+        st.session_state['start_analysis'] = True
 
-**How to use:**
-1. Capture or upload a leaf image  
-2. Adjust soil moisture  
-3. Click analyze & save  
-4. View insights and trends  
+    if st.session_state['start_analysis']:
+        st.subheader("Input Leaf Image")
+        input_option = st.radio("Select Input Method", ["Camera", "Gallery"])
+        leaf_images = []
 
-Built for real-world farming decisions.
+        if input_option == "Camera":
+            captured_image = st.camera_input("Capture Leaf Image")
+            if captured_image:
+                leaf_images.append(captured_image)
+        elif input_option == "Gallery":
+            uploaded_images = st.file_uploader("Upload Leaf Images", type=['jpg','jpeg','png'], accept_multiple_files=True)
+            if uploaded_images:
+                leaf_images.extend(uploaded_images)
+
+        if leaf_images:
+            global_dryness = st.slider("Default Dryness Level (%)", 0, 100, 10)
+            global_pests = st.slider("Default Pest Level (%)", 0, 100, 5)
+            global_texture = st.slider("Leaf Texture Score (0-100)", 0, 100, 50)
+            batch_results = []
+
+            for idx, leaf_file in enumerate(leaf_images):
+                image = Image.open(leaf_file).convert('RGB')
+                st.markdown(f"### Leaf {idx+1}")
+
+                dryness_level = st.slider(f"Leaf {idx+1} Dryness (%)", 0, 100, global_dryness, key=f"dry{idx}")
+                pests_level = st.slider(f"Leaf {idx+1} Pest Level (%)", 0, 100, global_pests, key=f"pest{idx}")
+                texture_score = st.slider(f"Leaf {idx+1} Texture (0-100)", 0, 100, global_texture, key=f"tex{idx}")
+
+                health, damage, confidence = calculate_health(image, dryness_level, pests_level, texture_score)
+                treatment = treatment_recommendation(health, damage)
+                heatmap = generate_heatmap(image, damage)
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.image(heatmap, caption=f"Leaf {idx+1} Damage Heatmap", use_column_width=True)
+                    st.write(f"Health: {health}%, Damage: {damage}%, Confidence: {confidence}%")
+                with col2:
+                    st.write("Dynamic Treatment Suggestions:")
+                    treatment_df = pd.DataFrame.from_dict(treatment, orient='index', columns=['Quantity'])
+                    st.bar_chart(treatment_df['Quantity'])
+                    st.markdown(f"""
+                    **Actions for Leaf {idx+1}:**
+                    - Water: {treatment['Watering (ml/day)']} ml/day
+                    - Nitrogen: {treatment['Nitrogen Fertilizer (g/week)']} g/week
+                    - Potassium: {treatment['Potassium Fertilizer (g/week)']} g/week
+                    - Pesticide: {treatment['Pesticide (ml/week)']} ml/week if needed
+                    - Fungicide: {treatment['Fungicide (ml/week)']} ml/week if needed
+                    """)
+
+                batch_results.append({
+                    'Leaf': idx+1,
+                    'Health %': health,
+                    'Damage %': damage,
+                    'Confidence %': confidence,
+                    'Dryness': dryness_level,
+                    'Pest Level': pests_level,
+                    'Texture': texture_score,
+                    'Treatment': treatment
+                })
+
+                if st.button(f"Add Leaf {idx+1} to History"):
+                    st.session_state['history'].append({
+                        'Leaf': idx+1,
+                        'Health %': health,
+                        'Damage %': damage,
+                        'Date': datetime.datetime.now()
+                    })
+                    st.success(f"Leaf {idx+1} added to history!")
+
+            # Batch treatment
+            st.subheader("Total Batch Treatment")
+            treatment_types = ['Watering (ml/day)','Nitrogen Fertilizer (g/week)','Potassium Fertilizer (g/week)','Pesticide (ml/week)','Fungicide (ml/week)']
+            total_treatments = {t:0 for t in treatment_types}
+            for r in batch_results:
+                for t in treatment_types:
+                    total_treatments[t] += r['Treatment'][t]
+
+            total_df = pd.DataFrame(total_treatments.items(), columns=['Treatment','Total Quantity'])
+            st.bar_chart(total_df.set_index('Treatment'))
+
+            # CSV download
+            st.subheader("Download Batch Summary CSV")
+            csv_df = pd.DataFrame([{
+                'Leaf': r['Leaf'],
+                'Health %': r['Health %'],
+                'Damage %': r['Damage %'],
+                'Confidence %': r['Confidence %'],
+                'Dryness': r['Dryness'],
+                'Pest Level': r['Pest Level'],
+                'Texture': r['Texture']
+            } for r in batch_results])
+            csv = csv_df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download CSV", data=csv, file_name="batch_leaf_summary.csv", mime="text/csv")
+
+            if st.button("Reset Analysis"):
+                st.session_state['start_analysis'] = False
+                st.experimental_rerun()
+
+# -----------------------------
+# Farming Knowledge Tab (Expanded)
+# -----------------------------
+with tabs[1]:
+    st.title("🌾 Farming Knowledge & Harvesting Tips")
+
+    # Crop guide
+    crop = st.selectbox("Select Crop", ["Tomato", "Spinach", "Rice", "Wheat", "Potato"])
+    st.subheader(f"{crop} Care Guide & Stages")
+    
+    guides = {
+        "Tomato": {
+            "Growth": "Seedling → Vegetative → Flowering → Fruiting",
+            "Water": "500 ml per plant every 2 days",
+            "Fertilizer": "Nitrogen every 2 weeks, Potassium every 3 weeks",
+            "Pests": "Aphids, Whiteflies",
+            "Harvest": "70–80 days after planting; ripe fruits fully red"
+        },
+        "Spinach": {
+            "Growth": "Seedling → Leaf Growth",
+            "Water": "300 ml per plant daily",
+            "Fertilizer": "Balanced NPK once a week",
+            "Pests": "Leaf miners",
+            "Harvest": "30–40 days; harvest outer leaves first"
+        },
+        "Rice": {
+            "Growth": "Seedling → Tillering → Panicle Initiation → Maturity",
+            "Water": "Maintain flooded fields early; adjust per stage",
+            "Fertilizer": "Nitrogen every 20 days, Phosphorus at planting",
+            "Pests": "Stem borers",
+            "Harvest": "3–4 months; grains golden-yellow"
+        },
+        "Wheat": {
+            "Growth": "Germination → Tillering → Heading → Maturity",
+            "Water": "Moderate; irrigate every 7–10 days",
+            "Fertilizer": "Nitrogen 20 days after sowing",
+            "Pests": "Aphids, Armyworms",
+            "Harvest": "Grains hard; straw golden"
+        },
+        "Potato": {
+            "Growth": "Sprouting → Vegetative → Tuber formation → Maturity",
+            "Water": "600 ml per plant every 3 days",
+            "Fertilizer": "Nitrogen early, Potassium mid-growth",
+            "Pests": "Colorado potato beetle",
+            "Harvest": "70–120 days; tubers firm, skin tough"
+        }
+    }
+
+    g = guides[crop]
+    st.markdown(f"""
+**Growth Stages:** {g['Growth']}
+**Water Requirement:** {g['Water']}
+**Fertilizer Guidance:** {g['Fertilizer']}
+**Common Pests:** {g['Pests']}
+**Harvesting Tips:** {g['Harvest']}
 """)
 
-    if st.button("Start"):
-        st.session_state.started = True
-    st.stop()
-
-# ---------------- ANALYSIS ----------------
-def analyze_leaf(img):
-    img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    total = img.shape[0] * img.shape[1]
-
-    green = cv2.inRange(hsv, (35,50,50), (85,255,255))
-    yellow = cv2.inRange(hsv, (20,50,50), (35,255,255))
-    brown = cv2.inRange(hsv, (10,50,20), (20,255,200))
-
-    g = np.sum(green>0)
-    y = np.sum(yellow>0)
-    b = np.sum(brown>0)
-
-    green_ratio = g / total
-    damage_ratio = (y + b) / total
-
-    edges = cv2.Canny(gray,100,200)
-    texture = np.sum(edges>0)/total
-
-    contours,_ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    large = [c for c in contours if cv2.contourArea(c) > 20]
-    small = [c for c in contours if 5 < cv2.contourArea(c) < 20]
-
-    spot_score = len(large) / 400
-    insect_score = len(small) / 300
-    variance = np.var(gray) / 1000
-
-    damage = (damage_ratio*100) + (texture*15) + (spot_score*20) + (variance*10) + (insect_score*25)
-    damage = min(max(damage,0),100)
-
-    health = 100 - damage
-    confidence = min(95, 65 + green_ratio*35)
-
-    return round(damage,2), round(health,2), round(confidence,2), green, (yellow+brown), insect_score
-
-# ---------------- LOGIC ----------------
-def disease_treatment(damage, insect_score):
-    if insect_score > 0.3:
-        return "Insect Attack", "Neem oil spray (5ml/L) or mild pesticide"
-    elif damage > 60:
-        return "Fungal Infection", "Apply fungicide + 20g compost"
-    elif damage > 40:
-        return "Nutrient Deficiency", "Apply 15g NPK fertilizer"
-    elif damage > 20:
-        return "Mild Stress", "Improve watering + compost"
-    else:
-        return "Healthy", "Maintain current care"
-
-def water_need(damage, moisture):
-    if moisture < 30:
-        return 2.0
-    elif damage > 50:
-        return 1.5
-    elif damage > 25:
-        return 1.2
-    return 0.8
-
-def priority(damage, moisture):
-    if damage > 60 or moisture < 30:
-        return "HIGH"
-    elif damage > 30:
-        return "MEDIUM"
-    return "LOW"
-
-# ---------------- UI ----------------
-st.title("🌿 Dashboard")
-
-if st.button("Reset All Data"):
-    st.session_state.history = []
-    st.success("Data reset")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    source = st.radio("Input", ["Upload", "Camera"])
-    if source == "Upload":
-        file = st.file_uploader("Upload Image", type=["jpg","png"])
-    else:
-        file = st.camera_input("Capture Image")
-
-with col2:
-    moisture = st.slider("Soil Moisture (%)", 0, 100, 50)
-
-# ---------------- PROCESS ----------------
-if file:
-    img = Image.open(file)
-    st.image(img, width=300)
-
-    damage, health, conf, green_mask, dmg_mask, insect_score = analyze_leaf(img)
-    disease, treatment = disease_treatment(damage, insect_score)
-    water = water_need(damage, moisture)
-    pr = priority(damage, moisture)
-
-    st.subheader("Analysis")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Damage", f"{damage}%")
-    c2.metric("Health", f"{health}%")
-    c3.metric("Confidence", f"{conf}%")
-
-    st.success(f"Disease: {disease}")
-    st.info(f"Treatment: {treatment}")
-    st.warning(f"Water: {water} L/day")
-    st.error(f"Priority: {pr}")
-
-    st.subheader("Damage View")
-    a, b = st.columns(2)
-    a.image(green_mask, caption="Healthy")
-    b.image(dmg_mask, caption="Damaged")
-
-    watered = st.checkbox("Watered Today")
-    fertilized = st.checkbox("Fertilizer Applied")
-
-    if st.button("Save Record"):
-        st.session_state.history.append({
-            "time": datetime.datetime.now(),
-            "damage": damage,
-            "health": health,
-            "moisture": moisture,
-            "watered": watered,
-            "fertilized": fertilized
-        })
-        st.success("Saved")
-
-# ---------------- DASHBOARD ----------------
-if st.session_state.history:
-    st.subheader("Farm Data")
-
-    df = pd.DataFrame(st.session_state.history)
-
-    st.dataframe(df.tail(10))
-
-    st.subheader("Health Trend")
-    st.line_chart(df.set_index("time")[["damage","health"]])
-
-    st.download_button("Download CSV", df.to_csv(index=False), "data.csv")
-
-# ---------------- ADVANCED INSIGHTS ----------------
-if st.session_state.history:
-    df = pd.DataFrame(st.session_state.history)
-    latest = df.iloc[-1]
-
-    st.subheader("AI Breakdown")
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Color Health", f"{round(100 - latest['damage']*0.6,1)}%")
-    c2.metric("Texture Damage", f"{round(latest['damage']*0.3,1)}%")
-    c3.metric("Pest Risk", f"{round(min(100, latest['damage']*0.5),1)}%")
-    c4.metric("Nutrient Stress", f"{round(latest['damage']*0.4,1)}%")
-
-    st.subheader("Priority Map")
-    df["priority_score"] = df["damage"] + (100 - df["moisture"])
-    st.bar_chart(df.set_index("time")[["priority_score"]])
-
-    st.subheader("Smart Summary")
-
-    trend = df["damage"].diff().mean()
-    if trend > 2:
-        st.warning("Plant health declining")
-    elif trend < -2:
-        st.success("Plant improving")
-    else:
-        st.info("Plant stable")
-
-    if st.button("Generate Insights"):
-        risk = min(100, latest["damage"] + 10)
-
-        if risk > 70:
-            st.error("High future risk")
-        elif risk > 40:
-            st.warning("Moderate risk")
-        else:
-            st.success("Low risk")
-
-        st.info(f"Maintain moisture around {latest['moisture']}%")
+    # Knowledge Q&A
+    st.subheader("Farmer Knowledge Q&A")
+    user_question = st.text_input("Ask a farming question (e.g., water, fertilizer, pests, harvest)")
+    if user_question:
+        # Basic rule-based responses
+        responses = {
+            "water": f"For {crop}, follow: {g['Water']}",
+            "fertilizer": f"For {crop}, follow: {g['Fertilizer']}",
+            "pest": f"Common pests for {crop}: {g['Pests']}",
+            "harvest": f"Harvesting guide: {g['Harvest']}"
+        }
+        matched = False
+        for key, ans in responses.items():
+            if key in user_question.lower():
+                st.info(ans)
+                matched = True
+        if not matched:
+            st.warning("No exact match found. Refer to crop guide above for general guidance.")
