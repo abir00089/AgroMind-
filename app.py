@@ -21,20 +21,21 @@ def calculate_health_and_pests(image, dryness_level, texture_score=50):
     img_array = np.array(image)
     r, g, b = img_array[:,:,0], img_array[:,:,1], img_array[:,:,2]
 
-    # Detect unhealthy areas (yellow/brown)
-    damage_mask = ((r > 100) & (g < 150) & (b < 100))
+    # More precise damage detection: brown/yellow pixels
+    damage_mask = ((r > 120) & (g > 90) & (g < 180) & (b < 100))
     damage_ratio = np.sum(damage_mask)/(img_array.shape[0]*img_array.shape[1])
-    color_health = max(0, 100 - damage_ratio*120)
+    color_health = max(0, 100 - damage_ratio*200)  # more sensitive scaling
 
-    # Detect visible pests (dark spots)
-    pest_mask = ((r < 100) & (g < 100) & (b < 100))
+    # Pest detection: dark spots
+    pest_mask = ((r < 80) & (g < 80) & (b < 80))
     pest_ratio = np.sum(pest_mask)/(img_array.shape[0]*img_array.shape[1])
-    pests_health = max(0, 100 - pest_ratio*150)
+    pests_health = max(0, 100 - pest_ratio*300)  # more impact
 
     dryness_health = max(0, 100 - dryness_level)
     texture_health = max(0, texture_score)
 
-    health = (color_health*0.35 + dryness_health*0.25 + pests_health*0.25 + texture_health*0.15)
+    # Weighted health calculation for more accurate per-leaf results
+    health = (color_health*0.3 + dryness_health*0.25 + pests_health*0.35 + texture_health*0.1)
     damage = 100 - health
     confidence = (color_health + dryness_health + pests_health + texture_health)/4
 
@@ -143,7 +144,7 @@ with tabs[0]:
                     'Confidence %': confidence,
                     'Dryness': dryness_level,
                     'Texture': texture_score,
-                    'Pest ratio': round(pest_ratio*100,2),
+                    'Pest ratio %': round(pest_ratio*100,2),
                     'Treatment': treatment
                 })
 
@@ -177,14 +178,12 @@ with tabs[0]:
                 'Confidence %': r['Confidence %'],
                 'Dryness': r['Dryness'],
                 'Texture': r['Texture'],
-                'Pest ratio %': r['Pest ratio']
+                'Pest ratio %': r['Pest ratio %']
             } for r in batch_results])
             csv = csv_df.to_csv(index=False).encode('utf-8')
             st.download_button("Download CSV", data=csv, file_name="batch_leaf_summary.csv", mime="text/csv")
 
-            # -----------------------------
-            # SAFE Reset Button
-            # -----------------------------
+            # Safe Reset
             if st.button("Reset Analysis"):
                 st.session_state['start_analysis'] = False
                 st.session_state['history'] = []
