@@ -16,7 +16,7 @@ def calculate_health_and_pests(image, dryness_level, texture_score=50):
     damage_ratio = np.sum(damage_mask)/(img_array.shape[0]*img_array.shape[1])
     color_health = max(0, 100 - damage_ratio*120)
 
-    # Detect visible pests (dark spots: low G & B)
+    # Detect visible pests (dark spots)
     pest_mask = ((r < 100) & (g < 100) & (b < 100))
     pest_ratio = np.sum(pest_mask)/(img_array.shape[0]*img_array.shape[1])
     pests_health = max(0, 100 - pest_ratio*150)
@@ -24,7 +24,6 @@ def calculate_health_and_pests(image, dryness_level, texture_score=50):
     dryness_health = max(0, 100 - dryness_level)
     texture_health = max(0, texture_score)
 
-    # Weighted overall health
     health = (color_health*0.35 + dryness_health*0.25 + pests_health*0.25 + texture_health*0.15)
     damage = 100 - health
     confidence = (color_health + dryness_health + pests_health + texture_health)/4
@@ -77,7 +76,8 @@ with tabs[0]:
     2. Capture/upload leaf images.
     3. Input dryness and optional texture score.
     4. View per-leaf heatmap, health, pests, and treatment.
-    5. Add to history, track batch, download CSV.
+    5. Add to history, track batch, view totals.
+    6. Download CSV summary or reset.
     """)
 
     if st.button("Start Analysis"):
@@ -177,8 +177,11 @@ with tabs[0]:
             csv = csv_df.to_csv(index=False).encode('utf-8')
             st.download_button("Download CSV", data=csv, file_name="batch_leaf_summary.csv", mime="text/csv")
 
+            # Fixed Reset button
             if st.button("Reset Analysis"):
                 st.session_state['start_analysis'] = False
+                if 'history' in st.session_state:
+                    st.session_state['history'] = []
                 st.experimental_rerun()
 
 # -----------------------------
