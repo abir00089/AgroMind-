@@ -9,8 +9,12 @@ import datetime
 # -----------------------------
 def calculate_health(image, dryness_level, pests_level, texture_score=50):
     img_array = np.array(image)
-    avg_color = img_array.mean()
-    color_health = np.clip((avg_color-100)/155*100, 0, 100)
+    r, g, b = img_array[:,:,0], img_array[:,:,1], img_array[:,:,2]
+
+    # Detect unhealthy areas: yellow/brown (high R, medium G, low B)
+    unhealthy_mask = ((r > 100) & (g < 150) & (b < 100))
+    unhealthy_ratio = np.sum(unhealthy_mask) / (img_array.shape[0]*img_array.shape[1])
+    color_health = max(0, 100 - unhealthy_ratio*120)
 
     dryness_health = max(0, 100 - dryness_level)
     pests_health = max(0, 100 - pests_level)
@@ -20,12 +24,13 @@ def calculate_health(image, dryness_level, pests_level, texture_score=50):
     damage = 100 - health
     confidence = (color_health + dryness_health + (100-pests_level) + texture_health)/4
 
-    return round(health,2), round(damage,2), round(confidence,2)
+    return round(health,2), round(damage,2), round(confidence,2), unhealthy_mask
 
-def generate_heatmap(image, damage_percent):
-    overlay_intensity = int(damage_percent*2.55)
-    overlay = Image.new('RGBA', image.size, (255,0,0,overlay_intensity))
-    heatmap = Image.alpha_composite(image.convert('RGBA'), overlay)
+def generate_heatmap(image, unhealthy_mask):
+    overlay = Image.new('RGBA', image.size, (255,0,0,0))
+    overlay_array = np.array(overlay)
+    overlay_array[unhealthy_mask] = [255,0,0,150]  # red overlay for damage
+    heatmap = Image.alpha_composite(image.convert('RGBA'), Image.fromarray(overlay_array))
     return heatmap
 
 def treatment_recommendation(health, damage):
@@ -97,9 +102,9 @@ with tabs[0]:
                 pests_level = st.slider(f"Leaf {idx+1} Pest Level (%)", 0, 100, global_pests, key=f"pest{idx}")
                 texture_score = st.slider(f"Leaf {idx+1} Texture (0-100)", 0, 100, global_texture, key=f"tex{idx}")
 
-                health, damage, confidence = calculate_health(image, dryness_level, pests_level, texture_score)
+                health, damage, confidence, unhealthy_mask = calculate_health(image, dryness_level, pests_level, texture_score)
                 treatment = treatment_recommendation(health, damage)
-                heatmap = generate_heatmap(image, damage)
+                heatmap = generate_heatmap(image, unhealthy_mask)
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -168,12 +173,10 @@ with tabs[0]:
                 st.experimental_rerun()
 
 # -----------------------------
-# Farming Knowledge Tab (Expanded)
+# Farming Knowledge Tab
 # -----------------------------
 with tabs[1]:
     st.title("🌾 Farming Knowledge & Harvesting Tips")
-
-    # Crop guide
     crop = st.selectbox("Select Crop", ["Tomato", "Spinach", "Rice", "Wheat", "Potato"])
     st.subheader(f"{crop} Care Guide & Stages")
     
@@ -224,11 +227,9 @@ with tabs[1]:
 **Harvesting Tips:** {g['Harvest']}
 """)
 
-    # Knowledge Q&A
     st.subheader("Farmer Knowledge Q&A")
     user_question = st.text_input("Ask a farming question (e.g., water, fertilizer, pests, harvest)")
     if user_question:
-        # Basic rule-based responses
         responses = {
             "water": f"For {crop}, follow: {g['Water']}",
             "fertilizer": f"For {crop}, follow: {g['Fertilizer']}",
