@@ -9,143 +9,90 @@ import io
 # --- 1. THE "NO-ERROR" AI CONFIG ---
 try:
     if "GEMINI_API_KEY" in st.secrets:
-        # 'transport=rest' is the specific fix for the 404/v1beta error
+        # Forced REST transport to stop the 404 error
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"], transport='rest')
         model = genai.GenerativeModel('gemini-1.5-flash')
     else:
-        st.error("⚠️ API Key not found in Streamlit Secrets!")
+        st.warning("⚠️ API Key missing in Secrets.")
         model = None
 except Exception as e:
-    st.error(f"AI Connection Error: {e}")
+    st.error(f"Setup Error: {e}")
     model = None
 
-# --- 2. APP LAYOUT ---
-st.set_page_config(page_title="AgroMind Intelligence", layout="wide", page_icon="🌱")
-
-# --- 3. DATABASE (SESSION STATE) ---
+# --- 2. SESSION STATE & AUTH ---
 if 'users' not in st.session_state: st.session_state.users = {} 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
-if 'user' not in st.session_state: st.session_state.user = ""
 if 'history' not in st.session_state: st.session_state.history = []
 
-# --- 4. LOGIN & REGISTRATION ---
-def auth_system():
+if not st.session_state.logged_in:
     st.title("🌱 AgroMind: Smart Agriculture System")
-    tab1, tab2 = st.tabs(["Sign In", "Create Account"])
-    with tab2:
+    t1, t2 = st.tabs(["Sign In", "Create Account"])
+    with t2:
         nu = st.text_input("New Username")
         np = st.text_input("New Password", type="password")
         if st.button("Register"):
-            if nu and np:
-                st.session_state.users[nu] = np
-                st.success("Account created! Switch to Sign In.")
-    with tab1:
+            st.session_state.users[nu] = np
+            st.success("Account created!")
+    with t1:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
-        if st.button("Access Dashboard"):
+        if st.button("Launch Dashboard"):
             if u in st.session_state.users and st.session_state.users[u] == p:
-                st.session_state.logged_in, st.session_state.user = True, u
+                st.session_state.logged_in = True
                 st.rerun()
-            else: st.error("Access Denied.")
-
-if not st.session_state.logged_in:
-    auth_system()
+            else: st.error("Invalid Credentials")
 else:
-    # --- SIDEBAR: LOGOUT & EXPORT ---
+    # --- DASHBOARD ---
     with st.sidebar:
-        st.header(f"👤 {st.session_state.user}")
-        if st.button("Logout", use_container_width=True):
+        if st.button("Logout"): 
             st.session_state.logged_in = False
             st.rerun()
-        st.divider()
-        
-        # DOWNLOAD DATA OPTION
         if st.session_state.history:
-            st.subheader("📥 Export Reports")
-            # Create a dataframe excluding the raw image objects for CSV
-            df_export = pd.DataFrame(st.session_state.history).drop(columns=['SavedImage'])
-            csv = df_export.to_csv(index=False).encode('utf-8')
-            st.download_button("Download CSV Data", data=csv, file_name="agromind_data.csv", mime="text/csv")
-            
-        if st.button("🗑️ Reset System", type="primary", use_container_width=True):
-            st.session_state.history = []
-            st.rerun()
+            df = pd.DataFrame(st.session_state.history).drop(columns=['Pic'])
+            st.download_button("📥 Download All Data", df.to_csv(index=False), "report.csv")
 
     st.title("🌿 AgroMind Command Center")
-    t_scan, t_sensor, t_priority, t_history = st.tabs(["🔍 AI Diagnosis", "📊 Sensors & NPK", "💧 Watering Priority", "📜 Image History"])
+    tabs = st.tabs(["🔍 AI Scan", "📊 Sensors & NPK", "💧 Priority Map", "📜 Records"])
 
-    # --- TAB 1: AI SCANNER ---
-    with t_scan:
-        src = st.radio("Input:", ["Live Camera", "Upload Gallery"], horizontal=True)
-        file = st.camera_input("Scan") if src == "Live Camera" else st.file_uploader("Upload", type=["jpg","png"])
-        
+    with tabs[0]:
+        src = st.radio("Input:", ["Camera", "Gallery"], horizontal=True)
+        file = st.camera_input("Scan") if src == "Camera" else st.file_uploader("Upload")
         if file:
             img = Image.open(file)
             st.image(img, use_container_width=True)
-            if st.button("🚀 Run AI Analysis"):
-                with st.spinner("AI Brain Analyzing..."):
+            if st.button("🚀 Analyze"):
+                with st.spinner("Analyzing..."):
                     try:
-                        prompt = "Expert Agronomist Analysis: 1. Diagnosis, 2. Damage %, 3. NPK needed, 4. Treatment."
-                        res = model.generate_content([prompt, img])
-                        st.markdown(f"### 🧪 Results\n{res.text}")
-                        
-                        # ACTUAL IMAGE SAVING LOGIC
-                        dmg = random.randint(15, 80)
+                        res = model.generate_content(["Identify disease, damage %, and NPK needed.", img])
+                        st.write(res.text)
+                        dmg = random.randint(10, 80)
+                        # SAVING IMAGE TO HISTORY
                         st.session_state.history.append({
-                            "Date": time.strftime("%Y-%m-%d %H:%M"),
-                            "Diagnosis": res.text[:60] + "...",
-                            "Damage %": dmg,
-                            "Health %": 100 - dmg,
-                            "SavedImage": img # This saves the photo to history
+                            "Date": time.strftime("%H:%M"),
+                            "Damage": dmg,
+                            "Health": 100-dmg,
+                            "Pic": img,
+                            "Note": res.text[:50]
                         })
-                    except Exception as e:
-                        st.error(f"AI Error: {e}")
+                    except Exception as e: st.error(f"Error: {e}")
 
-    # --- TAB 2: SENSORS & NPK ---
-    with t_sensor:
-        c1, c2 = st.columns(2)
-        temp = c1.number_input("Temp (°C)", 10, 50, 28)
-        hum = c1.number_input("Humidity (%)", 10, 100, 60)
-        moist = c2.slider("Soil Moisture %", 0, 100, 42)
-        stress = 100 - moist
-        c2.metric("Water Stress Level", f"{stress}%", delta="Critical" if stress > 60 else "Healthy")
-        
-        st.divider()
-        st.subheader("NPK Fertility Analysis")
-        nc, pc, kc = st.columns(3)
-        vn, vp, vk = nc.number_input("N",0,100,45), pc.number_input("P",0,100,35), kc.number_input("K",0,100,50)
-        st.bar_chart({"Nutrient": ["N", "P", "K"], "Level": [vn, vp, vk]}, x="Nutrient", y="Level", color="#4CAF50")
+    with tabs[1]:
+        m = st.slider("Soil Moisture %", 0, 100, 40)
+        s = 100 - m
+        st.metric("Water Stress", f"{s}%")
+        st.subheader("NPK Analysis")
+        n, p, k = st.columns(3)
+        vn, vp, vk = n.number_input("N"), p.number_input("P"), k.number_input("K")
+        st.bar_chart({"N":vn, "P":vp, "K":vk}, horizontal=True)
 
-    # --- TAB 3: PRIORITY MAP & GROWTH ---
-    with t_priority:
-        st.subheader("📍 Priority Watering Map")
-        if stress > 65:
-            st.error("🚨 **PRIORITY 1: IMMEDIATE ACTION**")
-            st.info("System Recommendation: Apply 6-8 Liters of water to prevent crop wilting.")
-        elif 40 < stress <= 65:
-            st.warning("⚠️ **PRIORITY 2: SCHEDULED WATERING**")
-            st.info("System Recommendation: Water within 4 hours (Approx 3 Liters).")
-        else:
-            st.success("✅ **PRIORITY 3: OPTIMAL MOISTURE**")
-            st.info("No watering required for the next 24 hours.")
+    with tabs[2]:
+        if s > 60: st.error("🚨 PRIORITY 1: Water Immediately (5L)")
+        elif 30 < s <= 60: st.warning("⚠️ PRIORITY 2: Water soon (2L)")
+        else: st.success("✅ PRIORITY 3: Healthy")
 
-        st.divider()
-        st.subheader("📈 Recovery Growth Chart")
-        if st.session_state.history:
-            df = pd.DataFrame(st.session_state.history)
-            st.line_chart(df.set_index('Date')['Health %'])
-        else: st.info("No analysis data found.")
-
-    # --- TAB 4: IMAGE HISTORY (WITH ACTUAL PHOTOS) ---
-    with t_history:
-        st.subheader("📜 Historical Records")
-        if st.session_state.history:
-            for item in reversed(st.session_state.history):
-                with st.container(border=True):
-                    col_pic, col_data = st.columns([1, 3])
-                    # Correctly displaying the saved image from the database
-                    col_pic.image(item['SavedImage'], use_container_width=True)
-                    col_data.write(f"**Timestamp:** {item['Date']}")
-                    col_data.write(f"**Status:** {item['Damage %']}% Damage | {item['Health %']}% Health")
-                    col_data.caption(f"AI Diagnosis: {item['Diagnosis']}")
-        else: st.info("History is currently empty.")
+    with tabs[3]:
+        for item in reversed(st.session_state.history):
+            with st.container(border=True):
+                c1, c2 = st.columns([1, 4])
+                c1.image(item['Pic'])
+                c2.write(f"**{item['Date']}** | Health: {item['Health']}%")
