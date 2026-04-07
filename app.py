@@ -12,7 +12,7 @@ import time
 st.set_page_config(page_title="AgroMind", layout="wide")
 
 # ================= BACKEND =================
-API_URL = "https://agromind-server.onrender.com"
+API_URL = "https://agromind-server.onrender.com/data"
 
 # ================= LOAD MODEL =================
 try:
@@ -26,6 +26,36 @@ if "history" not in st.session_state:
 
 if "water_logs" not in st.session_state:
     st.session_state.water_logs = []
+
+# ================= FETCH SENSOR DATA =================
+@st.cache_data(ttl=5)
+def get_sensor_data():
+    try:
+        response = requests.get(API_URL, timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        return {}
+    except:
+        return {}
+
+sensor_data = get_sensor_data()
+
+# ================= SOIL FERTILITY =================
+def get_soil_fertility(ph):
+    if ph < 5.5:
+        return ("Strongly Acidic", "Poor", "red", "Add lime to reduce acidity")
+
+    elif 5.5 <= ph < 6.5:
+        return ("Slightly Acidic", "Good", "orange", "Suitable for most crops")
+
+    elif 6.5 <= ph <= 7.5:
+        return ("Neutral", "Excellent", "green", "Best condition for farming")
+
+    elif 7.5 < ph <= 8.5:
+        return ("Slightly Alkaline", "Moderate", "blue", "Add organic compost")
+
+    else:
+        return ("Strongly Alkaline", "Poor", "red", "Use sulfur or organic matter")
 
 # ================= PREPROCESS =================
 def preprocess(img):
@@ -53,7 +83,6 @@ def analyze_leaf(img, dryness):
     green = cv2.inRange(hsv, (30,40,40), (90,255,255))
     yellow = cv2.inRange(hsv, (15,50,50), (35,255,255))
     brown = cv2.inRange(hsv, (5,50,50), (20,255,200))
-
     edges = cv2.Canny(gray, 50, 150)
 
     total = 256*256
@@ -70,9 +99,6 @@ def analyze_leaf(img, dryness):
         "health": health,
         "damage": damage,
         "pest_ratio": pest_ratio,
-        "yellow_mask": yellow,
-        "brown_mask": brown,
-        "pest_mask": edges,
         "yellow_ratio": yellow_ratio,
         "brown_ratio": brown_ratio,
         "ai_prediction": prediction
@@ -106,20 +132,63 @@ def detect_disease(res, dryness):
     return diseases, solutions
 
 # ================= UI =================
-st.title("🌱 AgroMind System")
+st.title("🌱 AgroMind Smart Farming System")
 
-# ================= LIVE DATA =================
-st.subheader("📡 Live Sensor Data")
+# ================= LIVE SENSOR DATA =================
+st.subheader("📡 Live Sensor Dashboard")
 
-try:
-    res = requests.get(API_URL, timeout=10)
-    data = res.json()
+if sensor_data:
+    st.success("✅ ESP32 Connected")
 
-    st.success("✅ Connected to Backend")
-    st.json(data)
+    moisture = sensor_data.get("moisture", 0)
+    temperature = sensor_data.get("temperature", 0)
+    humidity = sensor_data.get("humidity", 0)
+    ph = sensor_data.get("ph", 0)
 
-except:
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("🌱 Soil Moisture", f"{moisture}%")
+    col2.metric("🌡 Temperature", f"{temperature}°C")
+    col3.metric("💧 Humidity", f"{humidity}%")
+    col4.metric("⚗️ pH Level", ph)
+
+else:
     st.warning("⏳ Waiting for ESP32 data...")
+
+# ================= RESULT SECTION =================
+st.subheader("🧠 Smart Farm Result")
+
+if sensor_data:
+
+    # Irrigation Logic
+    if moisture < 30:
+        soil_status = "Dry"
+        irrigation = "💧 Water Needed"
+        color = "red"
+    elif 30 <= moisture <= 60:
+        soil_status = "Optimal"
+        irrigation = "✅ No Water Needed"
+        color = "green"
+    else:
+        soil_status = "Wet"
+        irrigation = "⚠️ Stop Watering"
+        color = "blue"
+
+    st.markdown(f"### 🌿 Soil Condition: :{color}[{soil_status}]")
+    st.markdown(f"### 🚰 Irrigation: {irrigation}")
+
+    # ================= FERTILITY =================
+    status, fertility, f_color, advice = get_soil_fertility(ph)
+
+    st.markdown("---")
+    st.subheader("🌾 Soil Fertility Analysis")
+
+    col1, col2 = st.columns(2)
+
+    col1.markdown(f"**Soil Type:** :{f_color}[{status}]")
+    col1.markdown(f"**Fertility Level:** {fertility}")
+
+    col2.markdown(f"**Recommendation:** {advice}")
 
 # ================= MENU =================
 menu = st.sidebar.radio("Menu",["Analysis","History","Water Tracker"])
@@ -138,6 +207,7 @@ if menu == "Analysis":
 
         st.write("Health:", round(res["health"],2))
         st.write("Damage:", round(res["damage"],2))
+        st.write("AI Prediction:", res["ai_prediction"])
 
         diseases, solutions = detect_disease(res, dryness)
 
