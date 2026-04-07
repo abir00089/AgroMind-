@@ -167,7 +167,6 @@ if sensor_data:
     st.markdown(f"**Soil Condition:** :{color}[{soil_status}]")
     st.markdown(f"**Irrigation:** {irrigation}")
 
-    # Fertility
     status, fertility, f_color, advice = get_soil_fertility(ph)
 
     st.markdown("---")
@@ -234,21 +233,56 @@ elif menu == "Batch Summary":
 
 # ================= GUIDE =================
 elif menu == "Guide":
-    st.write("""
-    1. Connect ESP32 to WiFi  
-    2. Sensors send data to backend  
-    3. App displays real-time data  
-    4. Upload leaf image for analysis  
-    """)
+
+    st.title("🌱 AgroMind System")
+    st.subheader("🌾 Crop Guide")
+
+    st.markdown("""
+**Rice:** Maintain soil, monitor pests and nutrients regularly  
+**Wheat:** Maintain soil, monitor pests and nutrients regularly  
+**Maize:** Maintain soil, monitor pests and nutrients regularly  
+**Potato:** Maintain soil, monitor pests and nutrients regularly  
+**Tomato:** Maintain soil, monitor pests and nutrients regularly  
+**Onion:** Maintain soil, monitor pests and nutrients regularly  
+**Sugarcane:** Maintain soil, monitor pests and nutrients regularly  
+**Carrot:** Maintain soil, monitor pests and nutrients regularly  
+**Spinach:** Maintain soil, monitor pests and nutrients regularly  
+**Soybean:** Maintain soil, monitor pests and nutrients regularly  
+""")
+
+    st.markdown("---")
+
+    st.subheader("❓ Ask Farming Question")
+
+    question = st.text_input("Type your question")
+
+    if st.button("Ask"):
+        if question:
+            st.success("🌿 Advice:")
+            st.write("Ensure proper irrigation, soil nutrients, and pest monitoring.")
+        else:
+            st.warning("Please enter a question")
 
 # ================= INSTRUCTIONS =================
 elif menu == "Instructions":
-    st.write("""
-    - Keep sensors properly connected  
-    - Maintain power supply  
-    - Use clear leaf images  
-    - Check results regularly  
-    """)
+
+    st.subheader("📖 Farming Instructions & Tips")
+
+    st.markdown("""
+🌱 Water plants early morning or late evening to reduce evaporation.  
+
+🧪 Use balanced fertilizers based on soil condition.  
+
+🍃 Monitor leaves for yellowing, browning, or pest activity.  
+
+🌞 Ensure adequate sunlight and spacing.  
+
+🧹 Remove damaged leaves to prevent disease spread.  
+
+💧 Mulching retains soil moisture in dry conditions.  
+
+🧴 Apply pesticide or fungicide carefully as needed.  
+""")
 
 # ================= AUTO REFRESH =================
 time.sleep(5)
