@@ -1,10 +1,13 @@
 import streamlit as st
+import requests
+import joblib
 from PIL import Image
 import numpy as np
 import pandas as pd
 import datetime
 import cv2
-import joblib
+
+
 
 st.set_page_config(page_title="AgroMind", layout="wide")
 
@@ -206,6 +209,21 @@ def farming_instructions():
 
 # ----------------- UI -----------------
 st.title("🌱 AgroMind System")
+
+st.subheader("📡 Live Sensor Data")
+
+# 🔥 ADD THIS BLOCK HERE
+import requests
+
+try:
+    res = requests.get("https://obscure-space-sniffle-g4w466gx7x7jhw6gg-5000.app.github.dev/get-data", timeout=5)
+    data = res.json()
+    st.json(data)
+except Exception as e:
+    st.write("Waiting for data...")
+    st.write(str(e))
+
+# 🔽 KEEP YOUR EXISTING CODE BELOW
 menu = st.sidebar.radio("Menu",["Analysis","Batch Summary","Water Tracker","Guide","Instructions"])
 dryness = st.sidebar.slider("Default Dryness Level",0,100,10)
 
