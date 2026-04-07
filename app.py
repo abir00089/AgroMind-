@@ -130,52 +130,6 @@ def detect_disease(res, dryness):
 # ================= UI =================
 st.title("🌱 AgroMind Smart Farming System")
 
-# ================= LIVE SENSOR =================
-st.subheader("📡 Live Sensor Dashboard")
-
-if sensor_data:
-    moisture = sensor_data.get("moisture", 0)
-    temperature = sensor_data.get("temperature", 0)
-    humidity = sensor_data.get("humidity", 0)
-    ph = sensor_data.get("ph", 0)
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("🌱 Moisture", f"{moisture}%")
-    col2.metric("🌡 Temp", f"{temperature}°C")
-    col3.metric("💧 Humidity", f"{humidity}%")
-    col4.metric("⚗️ pH", ph)
-else:
-    st.warning("⏳ Waiting for ESP32 data...")
-
-# ================= RESULT =================
-st.subheader("🧠 Smart Farm Result")
-
-if sensor_data:
-    if moisture < 30:
-        soil_status = "Dry"
-        irrigation = "💧 Water Needed"
-        color = "red"
-    elif 30 <= moisture <= 60:
-        soil_status = "Optimal"
-        irrigation = "✅ No Water Needed"
-        color = "green"
-    else:
-        soil_status = "Wet"
-        irrigation = "⚠️ Stop Watering"
-        color = "blue"
-
-    st.markdown(f"**Soil Condition:** :{color}[{soil_status}]")
-    st.markdown(f"**Irrigation:** {irrigation}")
-
-    status, fertility, f_color, advice = get_soil_fertility(ph)
-
-    st.markdown("---")
-    st.subheader("🌾 Soil Fertility")
-
-    st.markdown(f"**Soil Type:** :{f_color}[{status}]")
-    st.markdown(f"**Fertility:** {fertility}")
-    st.markdown(f"**Advice:** {advice}")
-
 # ================= MENU =================
 menu = st.sidebar.radio("Menu",[
     "Analysis",
@@ -190,10 +144,65 @@ dryness = st.sidebar.slider("Dryness Level",0,100,10)
 
 # ================= ANALYSIS =================
 if menu == "Analysis":
-    img_file = st.file_uploader("Upload Leaf Image")
+
+    # ===== LIVE SENSOR (NOW ONLY HERE) =====
+    st.subheader("📡 Live Sensor Dashboard")
+
+    if sensor_data:
+        moisture = sensor_data.get("moisture", 0)
+        temperature = sensor_data.get("temperature", 0)
+        humidity = sensor_data.get("humidity", 0)
+        ph = sensor_data.get("ph", 0)
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🌱 Moisture", f"{moisture}%")
+        col2.metric("🌡 Temp", f"{temperature}°C")
+        col3.metric("💧 Humidity", f"{humidity}%")
+        col4.metric("⚗️ pH", ph)
+    else:
+        st.warning("⏳ Waiting for ESP32 data...")
+
+    # ===== RESULT =====
+    if sensor_data:
+        st.subheader("🧠 Smart Farm Result")
+
+        if moisture < 30:
+            soil_status = "Dry"
+            irrigation = "💧 Water Needed"
+            color = "red"
+        elif 30 <= moisture <= 60:
+            soil_status = "Optimal"
+            irrigation = "✅ No Water Needed"
+            color = "green"
+        else:
+            soil_status = "Wet"
+            irrigation = "⚠️ Stop Watering"
+            color = "blue"
+
+        st.markdown(f"**Soil Condition:** :{color}[{soil_status}]")
+        st.markdown(f"**Irrigation:** {irrigation}")
+
+        status, fertility, f_color, advice = get_soil_fertility(ph)
+
+        st.markdown("### 🌾 Soil Fertility")
+        st.markdown(f"**Type:** :{f_color}[{status}]")
+        st.markdown(f"**Fertility:** {fertility}")
+        st.markdown(f"**Advice:** {advice}")
+
+    # ===== IMAGE INPUT =====
+    st.subheader("📷 Leaf Analysis")
+
+    img_file = st.file_uploader("Upload Image")
+    cam_img = st.camera_input("Or Capture Image")
+
+    img = None
 
     if img_file:
         img = Image.open(img_file)
+    elif cam_img:
+        img = Image.open(cam_img)
+
+    if img:
         st.image(img)
 
         res = analyze_leaf(img, dryness)
@@ -233,7 +242,6 @@ elif menu == "Batch Summary":
 
 # ================= GUIDE =================
 elif menu == "Guide":
-
     st.title("🌱 AgroMind System")
     st.subheader("🌾 Crop Guide")
 
@@ -251,37 +259,35 @@ elif menu == "Guide":
 """)
 
     st.markdown("---")
-
     st.subheader("❓ Ask Farming Question")
 
-    question = st.text_input("Type your question")
+    q = st.text_input("Type your question")
 
     if st.button("Ask"):
-        if question:
+        if q:
             st.success("🌿 Advice:")
-            st.write("Ensure proper irrigation, soil nutrients, and pest monitoring.")
+            st.write("Ensure proper irrigation, nutrients, and pest monitoring.")
         else:
-            st.warning("Please enter a question")
+            st.warning("Enter a question")
 
 # ================= INSTRUCTIONS =================
 elif menu == "Instructions":
-
     st.subheader("📖 Farming Instructions & Tips")
 
     st.markdown("""
-🌱 Water plants early morning or late evening to reduce evaporation.  
+🌱 Water plants early morning or evening  
 
-🧪 Use balanced fertilizers based on soil condition.  
+🧪 Use balanced fertilizers  
 
-🍃 Monitor leaves for yellowing, browning, or pest activity.  
+🍃 Monitor leaves regularly  
 
-🌞 Ensure adequate sunlight and spacing.  
+🌞 Ensure sunlight  
 
-🧹 Remove damaged leaves to prevent disease spread.  
+🧹 Remove damaged leaves  
 
-💧 Mulching retains soil moisture in dry conditions.  
+💧 Use mulching  
 
-🧴 Apply pesticide or fungicide carefully as needed.  
+🧴 Apply pesticide carefully  
 """)
 
 # ================= AUTO REFRESH =================
