@@ -1,4 +1,5 @@
 streamlit
+flash
 numpy
 pandas
 opencv-python-headless
