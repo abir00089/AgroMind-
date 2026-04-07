@@ -242,7 +242,6 @@ elif menu == "Batch Summary":
 
 # ================= GUIDE =================
 elif menu == "Guide":
-    st.title("🌱 AgroMind System")
     st.subheader("🌾 Crop Guide")
 
     st.markdown("""
