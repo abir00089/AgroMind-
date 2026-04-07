@@ -45,8 +45,8 @@ pump_status = "OFF"
 
 if sensor_data:
     ph = sensor_data.get("ph")
-    moisture_sensor = sensor_data.get("moisture")
-      pump = sensor_data.get("pump", 0)
+    moisture_sensor = sensor_data.get("soil_moisture")
+      pump = sensor_data.get("pump",0)
 
     if pump == 1:
         pump_status = "ON"
