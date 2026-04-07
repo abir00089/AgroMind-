@@ -1,6 +1,3 @@
-# (same imports and upper code remain unchanged — keeping your base) 
-# I am only rewriting FULL final version for you cleanly
-
 import streamlit as st
 import requests
 import joblib
@@ -10,6 +7,7 @@ import pandas as pd
 import datetime
 import cv2
 
+# ================= CONFIG =================
 st.set_page_config(page_title="AgroMind", layout="wide")
 
 API_URL = "https://agromind-server.onrender.com/data"
@@ -66,7 +64,7 @@ def analyze_leaf(img, dryness):
 
     if model:
         try:
-            small = cv2.resize(arr, (64,64)).flatten().reshape(1,-1)
+            small = cv2.resize(arr,(64,64)).flatten().reshape(1,-1)
             pred = model.predict(small)[0]
         except:
             pred = "Unknown"
@@ -101,19 +99,19 @@ def detect_disease(res, dryness):
     diseases = []
 
     if res["brown"] > 0.15:
-        diseases.append(("Fungal Infection","High","Carbendazim / Mancozeb"))
+        diseases.append(("Fungal Infection","High","Carbendazim"))
 
     if res["pest"] > 0.05:
         diseases.append(("Pest Attack","Medium","Neem Oil"))
 
     if res["yellow"] > 0.25:
-        diseases.append(("Nutrient Deficiency","Medium","NPK Fertilizer"))
+        diseases.append(("Nutrient Deficiency","Medium","NPK"))
 
     if dryness > 60:
         diseases.append(("Water Stress","High","Increase irrigation"))
 
     if not diseases:
-        diseases.append(("Healthy Leaf","Low","No treatment needed"))
+        diseases.append(("Healthy Leaf","Low","No action needed"))
 
     return diseases
 
@@ -132,46 +130,58 @@ if menu == "Analysis":
     st.subheader("📡 Live Sensor Dashboard")
 
     if sensor_data:
-        m = sensor_data.get("moisture",0)
-        t = sensor_data.get("temperature",0)
-        h = sensor_data.get("humidity",0)
+        moisture = sensor_data.get("moisture",0)
+        temp = sensor_data.get("temperature",0)
+        humidity = sensor_data.get("humidity",0)
         ph = sensor_data.get("ph",0)
 
         c1,c2,c3,c4 = st.columns(4)
-        c1.metric("🌱 Moisture",f"{m}%")
-        c2.metric("🌡 Temp",f"{t}°C")
-        c3.metric("💧 Humidity",f"{h}%")
+        c1.metric("🌱 Moisture",f"{moisture}%")
+        c2.metric("🌡 Temp",f"{temp}°C")
+        c3.metric("💧 Humidity",f"{humidity}%")
         c4.metric("⚗️ pH",ph)
 
-        # SOIL
-        st.subheader("🌾 Soil Analysis")
+        # ================= RESULT SECTION =================
+        st.markdown("---")
+        st.subheader("🧠 Smart Soil Analysis Result")
 
-        stress = "High" if m < 30 else "Moderate" if m < 60 else "Low"
+        # Water stress
+        if moisture < 30:
+            stress = "High"
+        elif moisture < 60:
+            stress = "Moderate"
+        else:
+            stress = "Low"
 
-        c1,c2,c3 = st.columns(3)
-        c1.metric("💧 Moisture",f"{m}%")
-        c2.metric("🌊 Water Stress",stress)
-        c3.metric("🌱 Fertility Score",f"{round((ph/14)*100,2)}%")
+        soil_type, fertility, color, advice = get_soil_fertility(ph)
 
-        status,fert,color,advice = get_soil_fertility(ph)
+        col1,col2,col3 = st.columns(3)
 
-        st.markdown(f"**Soil Type:** :{color}[{status}]")
-        st.markdown(f"**Fertility:** {fert}")
+        col1.metric("💧 Soil Moisture",f"{moisture}%")
+        col2.metric("🌊 Water Stress",stress)
+        col3.metric("🌱 Soil Fertility",fertility)
+
+        st.markdown(f"**Soil Type:** :{color}[{soil_type}]")
         st.markdown(f"**Advice:** {advice}")
 
-        # NPK
-        st.subheader("📊 NPK Levels")
+        # ===== NPK GRAPH =====
+        st.subheader("📊 NPK Level Graph")
+
+        n = sensor_data.get("nitrogen",40)
+        p = sensor_data.get("phosphorus",30)
+        k = sensor_data.get("potassium",50)
+
         df = pd.DataFrame({
             "Nutrient":["Nitrogen","Phosphorus","Potassium"],
-            "Level":[
-                sensor_data.get("nitrogen",40),
-                sensor_data.get("phosphorus",30),
-                sensor_data.get("potassium",50)
-            ]
+            "Level":[n,p,k]
         })
+
         st.bar_chart(df.set_index("Nutrient"))
 
-    # IMAGE INPUT FIX
+    else:
+        st.warning("Waiting for live data...")
+
+    # ================= IMAGE =================
     st.subheader("📷 Leaf Analysis")
 
     mode = st.radio("Select Input",["Upload Image","Use Camera"])
@@ -182,11 +192,10 @@ if menu == "Analysis":
         f = st.file_uploader("Upload",type=["jpg","png","jpeg"])
         if f:
             img = Image.open(f)
-
     else:
-        c = st.camera_input("Capture")
-        if c:
-            img = Image.open(c)
+        cam = st.camera_input("Capture")
+        if cam:
+            img = Image.open(cam)
 
     if img:
         st.image(img)
@@ -210,64 +219,43 @@ if menu == "Analysis":
 
 # ================= GUIDE =================
 elif menu == "Guide":
-
     st.header("🌾 Crop Guide")
-
     st.markdown("""
 **Rice:** Maintain soil, monitor pests and nutrients regularly  
-
 **Wheat:** Maintain soil, monitor pests and nutrients regularly  
-
 **Maize:** Maintain soil, monitor pests and nutrients regularly  
-
 **Potato:** Maintain soil, monitor pests and nutrients regularly  
-
 **Tomato:** Maintain soil, monitor pests and nutrients regularly  
-
 **Onion:** Maintain soil, monitor pests and nutrients regularly  
-
 **Sugarcane:** Maintain soil, monitor pests and nutrients regularly  
-
 **Carrot:** Maintain soil, monitor pests and nutrients regularly  
-
 **Spinach:** Maintain soil, monitor pests and nutrients regularly  
-
 **Soybean:** Maintain soil, monitor pests and nutrients regularly  
 """)
 
     st.subheader("❓ Ask Farming Question")
-
     q = st.text_input("Type your question")
-
     if st.button("Ask"):
         if q:
             st.success("🌿 Advice:")
-            st.write("Ensure proper irrigation, nutrients, and pest monitoring.")
+            st.write("Ensure proper irrigation and nutrient balance.")
         else:
             st.warning("Enter a question")
 
 # ================= INSTRUCTIONS =================
 elif menu == "Instructions":
-
     st.header("📖 Farming Instructions & Tips")
-
     st.markdown("""
 🌱 Water plants early morning or evening  
-
 🧪 Use balanced fertilizers  
-
 🍃 Monitor leaves regularly  
-
 🌞 Ensure sunlight  
-
 🧹 Remove damaged leaves  
-
 💧 Use mulching  
-
 🧴 Apply pesticide carefully  
 """)
 
-# ================= OTHER =================
+# ================= OTHERS =================
 elif menu == "History":
     st.dataframe(pd.DataFrame(st.session_state.history))
 
