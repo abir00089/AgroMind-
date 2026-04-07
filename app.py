@@ -46,8 +46,12 @@ pump_status = "OFF"
 if sensor_data:
     ph = sensor_data.get("ph")
     moisture_sensor = sensor_data.get("moisture")
-    pump_status = sensor_data.get("water_pump", "OFF")
+      pump = sensor_data.get("pump", 0)
 
+    if pump == 1:
+        pump_status = "ON"
+    else:
+        pump_status = "OFF"
 # ----------------- PH BASED FERTILITY -----------------
 def get_fertility_from_ph(ph):
     if ph is None:
