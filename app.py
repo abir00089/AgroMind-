@@ -289,6 +289,5 @@ elif menu == "Instructions":
 🧴 Apply pesticide carefully  
 """)
 
-# ================= AUTO REFRESH =================
-time.sleep(5)
-st.rerun()
+# ================= REFRESH =================
+if st.button("🔄 Refresh Data"): st.cache_data.clear()
