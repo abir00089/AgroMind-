@@ -31,9 +31,9 @@ if "water_logs" not in st.session_state:
 @st.cache_data(ttl=5)
 def get_sensor_data():
     try:
-        response = requests.get(API_URL, timeout=5)
-        if response.status_code == 200:
-            return response.json()
+        res = requests.get(API_URL, timeout=5)
+        if res.status_code == 200:
+            return res.json()
         return {}
     except:
         return {}
@@ -44,16 +44,12 @@ sensor_data = get_sensor_data()
 def get_soil_fertility(ph):
     if ph < 5.5:
         return ("Strongly Acidic", "Poor", "red", "Add lime to reduce acidity")
-
     elif 5.5 <= ph < 6.5:
         return ("Slightly Acidic", "Good", "orange", "Suitable for most crops")
-
     elif 6.5 <= ph <= 7.5:
         return ("Neutral", "Excellent", "green", "Best condition for farming")
-
     elif 7.5 < ph <= 8.5:
         return ("Slightly Alkaline", "Moderate", "blue", "Add organic compost")
-
     else:
         return ("Strongly Alkaline", "Poor", "red", "Use sulfur or organic matter")
 
@@ -134,33 +130,27 @@ def detect_disease(res, dryness):
 # ================= UI =================
 st.title("🌱 AgroMind Smart Farming System")
 
-# ================= LIVE SENSOR DATA =================
+# ================= LIVE SENSOR =================
 st.subheader("📡 Live Sensor Dashboard")
 
 if sensor_data:
-    st.success("✅ ESP32 Connected")
-
     moisture = sensor_data.get("moisture", 0)
     temperature = sensor_data.get("temperature", 0)
     humidity = sensor_data.get("humidity", 0)
     ph = sensor_data.get("ph", 0)
 
     col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric("🌱 Soil Moisture", f"{moisture}%")
-    col2.metric("🌡 Temperature", f"{temperature}°C")
+    col1.metric("🌱 Moisture", f"{moisture}%")
+    col2.metric("🌡 Temp", f"{temperature}°C")
     col3.metric("💧 Humidity", f"{humidity}%")
-    col4.metric("⚗️ pH Level", ph)
-
+    col4.metric("⚗️ pH", ph)
 else:
     st.warning("⏳ Waiting for ESP32 data...")
 
-# ================= RESULT SECTION =================
+# ================= RESULT =================
 st.subheader("🧠 Smart Farm Result")
 
 if sensor_data:
-
-    # Irrigation Logic
     if moisture < 30:
         soil_status = "Dry"
         irrigation = "💧 Water Needed"
@@ -174,29 +164,33 @@ if sensor_data:
         irrigation = "⚠️ Stop Watering"
         color = "blue"
 
-    st.markdown(f"### 🌿 Soil Condition: :{color}[{soil_status}]")
-    st.markdown(f"### 🚰 Irrigation: {irrigation}")
+    st.markdown(f"**Soil Condition:** :{color}[{soil_status}]")
+    st.markdown(f"**Irrigation:** {irrigation}")
 
-    # ================= FERTILITY =================
+    # Fertility
     status, fertility, f_color, advice = get_soil_fertility(ph)
 
     st.markdown("---")
-    st.subheader("🌾 Soil Fertility Analysis")
+    st.subheader("🌾 Soil Fertility")
 
-    col1, col2 = st.columns(2)
-
-    col1.markdown(f"**Soil Type:** :{f_color}[{status}]")
-    col1.markdown(f"**Fertility Level:** {fertility}")
-
-    col2.markdown(f"**Recommendation:** {advice}")
+    st.markdown(f"**Soil Type:** :{f_color}[{status}]")
+    st.markdown(f"**Fertility:** {fertility}")
+    st.markdown(f"**Advice:** {advice}")
 
 # ================= MENU =================
-menu = st.sidebar.radio("Menu",["Analysis","History","Water Tracker"])
+menu = st.sidebar.radio("Menu",[
+    "Analysis",
+    "History",
+    "Water Tracker",
+    "Batch Summary",
+    "Guide",
+    "Instructions"
+])
+
 dryness = st.sidebar.slider("Dryness Level",0,100,10)
 
 # ================= ANALYSIS =================
 if menu == "Analysis":
-
     img_file = st.file_uploader("Upload Leaf Image")
 
     if img_file:
@@ -215,13 +209,6 @@ if menu == "Analysis":
             st.warning(diseases[i])
             st.write("Solution:", solutions[i])
 
-        if st.button("Save"):
-            st.session_state.history.append({
-                "date": datetime.datetime.now(),
-                "health": res["health"],
-                "damage": res["damage"]
-            })
-
 # ================= HISTORY =================
 elif menu == "History":
     st.dataframe(pd.DataFrame(st.session_state.history))
@@ -234,8 +221,34 @@ elif menu == "Water Tracker":
             "date": datetime.datetime.now(),
             "water": water
         })
-
     st.write(st.session_state.water_logs)
+
+# ================= BATCH SUMMARY =================
+elif menu == "Batch Summary":
+    if st.session_state.history:
+        df = pd.DataFrame(st.session_state.history)
+        st.write("Average Health:", df["health"].mean())
+        st.write("Average Damage:", df["damage"].mean())
+    else:
+        st.info("No data available")
+
+# ================= GUIDE =================
+elif menu == "Guide":
+    st.write("""
+    1. Connect ESP32 to WiFi  
+    2. Sensors send data to backend  
+    3. App displays real-time data  
+    4. Upload leaf image for analysis  
+    """)
+
+# ================= INSTRUCTIONS =================
+elif menu == "Instructions":
+    st.write("""
+    - Keep sensors properly connected  
+    - Maintain power supply  
+    - Use clear leaf images  
+    - Check results regularly  
+    """)
 
 # ================= AUTO REFRESH =================
 time.sleep(5)
