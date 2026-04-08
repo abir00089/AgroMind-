@@ -22,7 +22,7 @@ if "water_logs" not in st.session_state:
     st.session_state.water_logs = []
 
 # ----------------- BACKEND -----------------
-API_URL = "https://agromind-server-2.onrender.com/data"
+API_URL = "https://agromind-server.onrender.com/data"
 
 def get_sensor_data():
     try:
